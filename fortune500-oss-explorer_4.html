@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Fortune 500 OSS Research Explorer — depthfirst</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #0d0f12; --bg2: #141618; --bg3: #1c1e22;
+    --border: rgba(255,255,255,0.07); --border2: rgba(255,255,255,0.12);
+    --text: #e8eaed; --text2: #9aa0aa; --text3: #5c6370;
+    --green: #1D9E75; --green-bg: rgba(29,158,117,0.12); --green-text: #3ecfa0;
+    --amber: #EF9F27; --amber-bg: rgba(239,159,39,0.12); --amber-text: #f5bb60;
+    --gray-bg: rgba(255,255,255,0.05); --gray-text: #9aa0aa;
+    --blue: #378ADD; --blue-bg: rgba(55,138,221,0.12); --blue-text: #6cb0f0;
+    --mono: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+    --sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    --radius: 8px; --radius-lg: 12px;
+  }
+  body { font-family: var(--sans); background: var(--bg); color: var(--text); min-height: 100vh; font-size: 14px; line-height: 1.5; }
+  .page { max-width: 1200px; margin: 0 auto; padding: 2rem 1.5rem; }
+  .header { margin-bottom: 2rem; padding-bottom: 1.5rem; border-bottom: 1px solid var(--border); }
+  .header-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+  .brand { font-family: var(--mono); font-size: 11px; color: var(--text3); letter-spacing: .12em; text-transform: uppercase; }
+  .logo { display: flex; align-items: center; gap: 8px; }
+  .logo-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); }
+  h1 { font-size: 22px; font-weight: 600; color: var(--text); margin-bottom: 4px; }
+  .subtitle { font-size: 14px; color: var(--text2); }
+  .stats-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 1.5rem; }
+  .stat { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 1rem; }
+  .stat-label { font-size: 11px; color: var(--text3); margin-bottom: 4px; text-transform: uppercase; letter-spacing: .06em; }
+  .stat-value { font-size: 24px; font-weight: 600; color: var(--text); line-height: 1; }
+  .stat-sub { font-size: 11px; color: var(--text3); margin-top: 4px; }
+  .insight { background: var(--blue-bg); border: 1px solid rgba(55,138,221,0.2); border-radius: var(--radius); padding: .875rem 1rem; margin-bottom: 1.5rem; font-size: 13px; color: var(--text2); line-height: 1.6; }
+  .insight strong { color: var(--text); }
+  .charts-row { display: grid; grid-template-columns: 1fr 1.6fr; gap: 1.5rem; margin-bottom: 1.5rem; }
+  .chart-card { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 1.25rem; }
+  .chart-title { font-size: 11px; text-transform: uppercase; letter-spacing: .07em; color: var(--text3); font-weight: 600; margin-bottom: 1rem; }
+  .legend { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 10px; }
+  .legend-item { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--text2); }
+  .legend-dot { width: 8px; height: 8px; border-radius: 2px; flex-shrink: 0; }
+  .filters { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 1rem; align-items: center; }
+  .search-wrap { position: relative; flex: 1; min-width: 200px; }
+  .search-wrap svg { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); width: 14px; height: 14px; stroke: var(--text3); fill: none; pointer-events: none; }
+  input[type="text"] { width: 100%; background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); color: var(--text); font-size: 13px; padding: 7px 12px 7px 32px; outline: none; font-family: var(--sans); }
+  input[type="text"]:focus { border-color: var(--border2); }
+  input[type="text"]::placeholder { color: var(--text3); }
+  .filter-group { display: flex; flex-wrap: wrap; gap: 4px; }
+  .btn { font-size: 12px; padding: 5px 10px; border-radius: 6px; border: 1px solid var(--border); background: transparent; color: var(--text2); cursor: pointer; font-family: var(--sans); white-space: nowrap; transition: all .12s; }
+  .btn:hover { border-color: var(--border2); color: var(--text); background: var(--bg3); }
+  .btn.active-all { background: var(--blue-bg); color: var(--blue-text); border-color: rgba(55,138,221,0.3); }
+  .btn.active-t1 { background: var(--green-bg); color: var(--green-text); border-color: rgba(29,158,117,0.3); }
+  .btn.active-t2 { background: var(--amber-bg); color: var(--amber-text); border-color: rgba(239,159,39,0.3); }
+  .btn.active-t3 { background: var(--gray-bg); color: var(--gray-text); border-color: var(--border2); }
+  .result-meta { font-size: 12px; color: var(--text3); margin-bottom: 8px; font-family: var(--mono); }
+  .table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: var(--radius-lg); }
+  table { width: 100%; border-collapse: collapse; min-width: 680px; }
+  thead th { font-size: 11px; text-transform: uppercase; letter-spacing: .07em; color: var(--text3); font-weight: 600; padding: 10px 12px; text-align: left; border-bottom: 1px solid var(--border); cursor: pointer; white-space: nowrap; background: var(--bg2); user-select: none; }
+  thead th:hover { color: var(--text2); }
+  tbody tr { border-bottom: 1px solid var(--border); transition: background .1s; }
+  tbody tr:last-child { border-bottom: none; }
+  tbody tr:hover { background: var(--bg2); }
+  tbody td { padding: 9px 12px; color: var(--text); vertical-align: middle; font-size: 13px; }
+  .rank { font-family: var(--mono); font-size: 12px; color: var(--text3); }
+  .company-name { font-weight: 500; }
+  .sector-tag { font-size: 11px; color: var(--text2); }
+  .gh-link { color: var(--blue-text); text-decoration: none; font-family: var(--mono); font-size: 12px; }
+  .gh-link:hover { text-decoration: underline; }
+  .repos-num { font-family: var(--mono); font-size: 12px; text-align: right; }
+  .activity { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; }
+  .dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+  .dot-high { background: var(--green); }
+  .dot-med { background: var(--amber); }
+  .dot-low { background: #5c6370; }
+  .tier-badge { display: inline-block; font-size: 11px; font-weight: 600; padding: 3px 8px; border-radius: 5px; }
+  .tier-1 { background: var(--green-bg); color: var(--green-text); }
+  .tier-2 { background: var(--amber-bg); color: var(--amber-text); }
+  .tier-3 { background: var(--gray-bg); color: var(--gray-text); }
+  .sort-icon { font-size: 10px; opacity: 0.3; margin-left: 3px; }
+  .sort-icon.on { opacity: 1; }
+  .empty { text-align: center; padding: 3rem; color: var(--text3); font-size: 14px; }
+  .footer { margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; font-size: 11px; color: var(--text3); font-family: var(--mono); }
+  @media (max-width: 640px) { .stats-grid { grid-template-columns: repeat(2, 1fr); } .charts-row { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<div class="page">
+
+<div class="header">
+  <div class="header-top">
+    <div class="logo"><div class="logo-dot"></div><span class="brand">depthfirst · research prioritization</span></div>
+    <span class="brand" style="display:none" id="last-updated"></span>
+  </div>
+  <h1>Fortune 500 open source attack surface</h1>
+  <div class="subtitle">Companies with active GitHub organizations — scored for responsible disclosure research prioritization</div>
+</div>
+
+<div class="stats-grid">
+  <div class="stat"><div class="stat-label">Companies mapped</div><div class="stat-value" id="sc-total">68</div><div class="stat-sub">active GitHub orgs</div></div>
+  <div class="stat"><div class="stat-label">Tier 1 targets</div><div class="stat-value" id="sc-t1" style="color:var(--green-text)">21</div><div class="stat-sub">high OSS activity</div></div>
+  <div class="stat"><div class="stat-label">Est. public repos</div><div class="stat-value">55K+</div><div class="stat-sub">across all orgs</div></div>
+  <div class="stat"><div class="stat-label">AppSec spend (est.)</div><div class="stat-value">$4.2B+</div><div class="stat-sub">across these orgs</div></div>
+</div>
+
+<div class="insight"><strong>Research motion:</strong> depthfirst scans public repos, surfaces real findings via responsible disclosure, and converts each finding into a warm outreach to AppSec or Platform Engineering. <strong>Tier 1 targets</strong> have the deepest OSS footprint, largest security teams, and highest probability of converting a vulnerability finding into a qualified conversation — prioritize research hours here first.</div>
+
+<div class="charts-row">
+  <div class="chart-card">
+    <div class="chart-title">Priority distribution</div>
+    <div style="position:relative;height:160px"><canvas id="tierChart"></canvas></div>
+    <div style="margin-top:12px;font-size:12px;color:var(--text2);line-height:1.8">
+      <div><span class="tier-badge tier-1">Tier 1</span> &nbsp;High OSS, active AppSec — start here</div>
+      <div style="margin-top:5px"><span class="tier-badge tier-2">Tier 2</span> &nbsp;Moderate OSS — follow-on sweep</div>
+      <div style="margin-top:5px"><span class="tier-badge tier-3">Tier 3</span> &nbsp;Limited footprint — monitor</div>
+    </div>
+  </div>
+  <div class="chart-card">
+    <div class="chart-title">Public repos by sector</div>
+    <div class="legend" id="sectorLegend"></div>
+    <div style="position:relative;height:220px"><canvas id="sectorChart"></canvas></div>
+  </div>
+</div>
+
+<div class="filters">
+  <div class="search-wrap">
+    <svg viewBox="0 0 24 24" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+    <input type="text" id="search" placeholder="Search companies, sectors, GitHub orgs…">
+  </div>
+  <div class="filter-group" id="sectorFilters">
+    <button class="btn active-all" data-s="all">All sectors</button>
+    <button class="btn" data-s="Technology">Technology</button>
+    <button class="btn" data-s="Financial">Financial</button>
+    <button class="btn" data-s="Telecom">Telecom</button>
+    <button class="btn" data-s="Healthcare">Healthcare</button>
+    <button class="btn" data-s="Retail">Retail</button>
+    <button class="btn" data-s="Defense">Defense</button>
+    <button class="btn" data-s="Media">Media</button>
+    <button class="btn" data-s="Automotive">Automotive</button>
+    <button class="btn" data-s="Energy">Energy</button>
+  </div>
+  <div class="filter-group" id="tierFilters">
+    <button class="btn active-all" data-t="all">All tiers</button>
+    <button class="btn" data-t="1">Tier 1</button>
+    <button class="btn" data-t="2">Tier 2</button>
+    <button class="btn" data-t="3">Tier 3</button>
+  </div>
+</div>
+
+<div class="result-meta" id="resultMeta"></div>
+<div class="table-wrap">
+  <table>
+    <thead>
+      <tr>
+        <th onclick="sortBy('rank')">F500 <span class="sort-icon" id="si-rank">↕</span></th>
+        <th onclick="sortBy('name')">Company <span class="sort-icon" id="si-name">↕</span></th>
+        <th>Sector</th>
+        <th>GitHub org</th>
+        <th onclick="sortBy('repos')">Repos <span class="sort-icon" id="si-repos">↕</span></th>
+        <th>Activity</th>
+        <th onclick="sortBy('tier')">Priority <span class="sort-icon" id="si-tier">↑</span></th>
+      </tr>
+    </thead>
+    <tbody id="tableBody"></tbody>
+  </table>
+  <div id="emptyState" class="empty" style="display:none">No companies match — adjust your filters.</div>
+</div>
+
+<div class="footer">
+  <span>depthfirst · fortune 500 oss tam · march 2026</span>
+  <span id="filtered-count"></span>
+</div>
+
+</div>
+
+<script>
+const DATA = [
+  {rank:14,name:'Microsoft',sector:'Technology',org:'microsoft',repos:4100,activity:'High',tier:1},
+  {rank:2,name:'Amazon / AWS',sector:'Technology',org:'aws',repos:2500,activity:'High',tier:1},
+  {rank:8,name:'Alphabet (Google)',sector:'Technology',org:'google',repos:3200,activity:'High',tier:1},
+  {rank:27,name:'Meta Platforms',sector:'Technology',org:'facebook',repos:800,activity:'High',tier:1},
+  {rank:49,name:'IBM',sector:'Technology',org:'IBM',repos:2200,activity:'High',tier:1},
+  {rank:46,name:'Intel',sector:'Technology',org:'intel',repos:850,activity:'High',tier:1},
+  {rank:77,name:'Cisco Systems',sector:'Technology',org:'cisco',repos:600,activity:'High',tier:1},
+  {rank:136,name:'Salesforce',sector:'Technology',org:'salesforce',repos:700,activity:'High',tier:1},
+  {rank:85,name:'Oracle',sector:'Technology',org:'oracle',repos:500,activity:'High',tier:1},
+  {rank:134,name:'Nvidia',sector:'Technology',org:'NVIDIA',repos:450,activity:'High',tier:1},
+  {rank:3,name:'Apple',sector:'Technology',org:'apple',repos:70,activity:'Medium',tier:2},
+  {rank:31,name:'Dell Technologies',sector:'Technology',org:'dell',repos:300,activity:'Medium',tier:2},
+  {rank:128,name:'Broadcom',sector:'Technology',org:'broadcom',repos:150,activity:'Medium',tier:2},
+  {rank:null,name:'NetApp',sector:'Technology',org:'NetApp',repos:200,activity:'Medium',tier:2},
+  {rank:127,name:'Micron Technology',sector:'Technology',org:'MicronOpenSource',repos:80,activity:'Medium',tier:2},
+  {rank:null,name:'HP Inc',sector:'Technology',org:'hp-inc',repos:120,activity:'Medium',tier:2},
+  {rank:null,name:'Western Digital',sector:'Technology',org:'westerndigitalcorp',repos:90,activity:'Medium',tier:2},
+  {rank:null,name:'Qualcomm',sector:'Technology',org:'qualcomm',repos:110,activity:'Medium',tier:2},
+  {rank:13,name:'AT&T',sector:'Telecom',org:'att',repos:102,activity:'High',tier:1},
+  {rank:null,name:'T-Mobile',sector:'Telecom',org:'tmobile',repos:92,activity:'High',tier:1},
+  {rank:23,name:'Verizon',sector:'Telecom',org:'Verizon',repos:120,activity:'High',tier:1},
+  {rank:28,name:'Comcast',sector:'Telecom',org:'Comcast',repos:350,activity:'High',tier:1},
+  {rank:null,name:'Charter Communications',sector:'Telecom',org:'chartertech',repos:40,activity:'Medium',tier:2},
+  {rank:24,name:'JPMorgan Chase',sector:'Financial',org:'jpmorganchase',repos:180,activity:'High',tier:1},
+  {rank:57,name:'Goldman Sachs',sector:'Financial',org:'goldmansachs',repos:120,activity:'High',tier:1},
+  {rank:null,name:'Capital One',sector:'Financial',org:'capitalone',repos:250,activity:'High',tier:1},
+  {rank:null,name:'American Express',sector:'Financial',org:'americanexpress',repos:160,activity:'High',tier:1},
+  {rank:143,name:'PayPal Holdings',sector:'Financial',org:'paypal',repos:310,activity:'High',tier:1},
+  {rank:null,name:'Mastercard',sector:'Financial',org:'Mastercard',repos:90,activity:'Medium',tier:2},
+  {rank:null,name:'Morgan Stanley',sector:'Financial',org:'morganstanley',repos:90,activity:'Medium',tier:2},
+  {rank:147,name:'Visa',sector:'Financial',org:'visa',repos:100,activity:'Medium',tier:2},
+  {rank:41,name:'Wells Fargo',sector:'Financial',org:'wellsfargo',repos:50,activity:'Medium',tier:2},
+  {rank:44,name:'Citigroup',sector:'Financial',org:'citi',repos:60,activity:'Medium',tier:2},
+  {rank:null,name:'Fidelity Investments',sector:'Financial',org:'fidelity-investments',repos:80,activity:'Medium',tier:2},
+  {rank:null,name:'BlackRock',sector:'Financial',org:'blackrock',repos:70,activity:'Medium',tier:2},
+  {rank:36,name:'Bank of America',sector:'Financial',org:'bankofamerica',repos:40,activity:'Low',tier:3},
+  {rank:1,name:'Walmart',sector:'Retail',org:'walmartlabs',repos:600,activity:'High',tier:1},
+  {rank:32,name:'Target',sector:'Retail',org:'target',repos:200,activity:'High',tier:1},
+  {rank:17,name:'Home Depot',sector:'Retail',org:'homedepotinc',repos:120,activity:'Medium',tier:2},
+  {rank:21,name:'Kroger',sector:'Retail',org:'KrogerTechnology',repos:60,activity:'Medium',tier:2},
+  {rank:35,name:"Lowe's",sector:'Retail',org:'LowesDigital',repos:70,activity:'Medium',tier:2},
+  {rank:null,name:'Nike',sector:'Retail',org:'nike',repos:80,activity:'Medium',tier:2},
+  {rank:null,name:'Best Buy',sector:'Retail',org:'bestbuy',repos:30,activity:'Low',tier:3},
+  {rank:11,name:'Costco Wholesale',sector:'Retail',org:'costco',repos:15,activity:'Low',tier:3},
+  {rank:73,name:'Netflix',sector:'Media',org:'Netflix',repos:500,activity:'High',tier:1},
+  {rank:53,name:'Walt Disney',sector:'Media',org:'wdpro',repos:80,activity:'Medium',tier:2},
+  {rank:null,name:'Warner Bros Discovery',sector:'Media',org:'warnerbros',repos:40,activity:'Low',tier:3},
+  {rank:37,name:'Johnson & Johnson',sector:'Healthcare',org:'janssen',repos:60,activity:'Medium',tier:2},
+  {rank:173,name:'Becton Dickinson',sector:'Healthcare',org:'bectondickinson',repos:50,activity:'Medium',tier:2},
+  {rank:null,name:'Change Healthcare',sector:'Healthcare',org:'changehealthcare',repos:35,activity:'Medium',tier:2},
+  {rank:4,name:'CVS Health',sector:'Healthcare',org:'CVSHealth',repos:45,activity:'Low',tier:3},
+  {rank:5,name:'UnitedHealth Group',sector:'Healthcare',org:'uhc',repos:30,activity:'Low',tier:3},
+  {rank:43,name:'Pfizer',sector:'Healthcare',org:'pfizer',repos:40,activity:'Low',tier:3},
+  {rank:40,name:'Humana',sector:'Healthcare',org:'Humana',repos:20,activity:'Low',tier:3},
+  {rank:55,name:'Lockheed Martin',sector:'Defense',org:'lockheedmartin',repos:120,activity:'Medium',tier:2},
+  {rank:null,name:'Boeing',sector:'Defense',org:'Boeing',repos:90,activity:'Medium',tier:2},
+  {rank:null,name:'Booz Allen Hamilton',sector:'Defense',org:'boozallen',repos:110,activity:'Medium',tier:2},
+  {rank:58,name:'Raytheon Technologies',sector:'Defense',org:'raytheoncompany',repos:60,activity:'Medium',tier:2},
+  {rank:null,name:'Northrop Grumman',sector:'Defense',org:'northropgrumman',repos:40,activity:'Low',tier:3},
+  {rank:null,name:'Leidos',sector:'Defense',org:'Leidos',repos:50,activity:'Low',tier:3},
+  {rank:null,name:'SAIC',sector:'Defense',org:'saic-it',repos:30,activity:'Low',tier:3},
+  {rank:22,name:'Ford Motor',sector:'Automotive',org:'ford-motor-company',repos:150,activity:'Medium',tier:2},
+  {rank:25,name:'General Motors',sector:'Automotive',org:'GeneralMotors',repos:80,activity:'Medium',tier:2},
+  {rank:null,name:'Tesla',sector:'Automotive',org:'tesla',repos:30,activity:'Low',tier:3},
+  {rank:null,name:'Stellantis',sector:'Automotive',org:'stellantis',repos:40,activity:'Low',tier:3},
+  {rank:6,name:'ExxonMobil',sector:'Energy',org:'ExxonMobil',repos:30,activity:'Low',tier:3},
+  {rank:16,name:'Chevron',sector:'Energy',org:'chevron',repos:25,activity:'Low',tier:3},
+  {rank:null,name:'Duke Energy',sector:'Energy',org:'duke-energy',repos:40,activity:'Medium',tier:3},
+  {rank:null,name:'ConocoPhillips',sector:'Energy',org:'conocophillips',repos:30,activity:'Low',tier:3},
+  {rank:null,name:'NextEra Energy',sector:'Energy',org:'nextera',repos:20,activity:'Low',tier:3},
+];
+
+let filtered = [...DATA], sortCol = 'tier', sortDir = 'asc', curSector = 'all', curTier = 'all', query = '';
+
+const sectors = ['Technology','Telecom','Financial','Retail','Media','Healthcare','Defense','Automotive','Energy'];
+const sColors = ['#1D9E75','#534AB7','#378ADD','#BA7517','#D4537E','#D85A30','#5F5E5A','#888780','#EF9F27'];
+
+function buildCharts() {
+  const tierCounts = [DATA.filter(d=>d.tier===1).length, DATA.filter(d=>d.tier===2).length, DATA.filter(d=>d.tier===3).length];
+  new Chart(document.getElementById('tierChart'), {
+    type: 'bar',
+    data: { labels: ['Tier 1','Tier 2','Tier 3'], datasets: [{ data: tierCounts, backgroundColor: ['#1D9E75','#EF9F27','#444649'], borderRadius: 5, borderSkipped: false, barThickness: 44 }] },
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => ` ${ctx.raw} companies` } } }, scales: { x: { grid: { display: false }, ticks: { color: '#9aa0aa', font: { size: 12 } }, border: { display: false } }, y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#5c6370', font: { size: 11 }, stepSize: 5 }, border: { display: false } } } }
+  });
+  const sRepos = sectors.map(s => DATA.filter(d => d.sector === s).reduce((a, d) => a + d.repos, 0));
+  const leg = document.getElementById('sectorLegend');
+  leg.innerHTML = sectors.map((s,i) => `<div class="legend-item"><div class="legend-dot" style="background:${sColors[i]}"></div>${s}</div>`).join('');
+  new Chart(document.getElementById('sectorChart'), {
+    type: 'bar',
+    data: { labels: sectors, datasets: [{ data: sRepos, backgroundColor: sColors, borderRadius: 3, borderSkipped: false }] },
+    options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y', plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => ` ${ctx.raw.toLocaleString()} repos` } } }, scales: { x: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#5c6370', font: { size: 11 } }, border: { display: false } }, y: { grid: { display: false }, ticks: { color: '#9aa0aa', font: { size: 12 } }, border: { display: false } } } }
+  });
+}
+
+function render() {
+  const tb = document.getElementById('tableBody');
+  const em = document.getElementById('emptyState');
+  document.getElementById('resultMeta').textContent = `${filtered.length} companies`;
+  document.getElementById('filtered-count').textContent = `${filtered.length} / ${DATA.length} shown`;
+  if (!filtered.length) { tb.innerHTML = ''; em.style.display = 'block'; return; }
+  em.style.display = 'none';
+  tb.innerHTML = filtered.map(c => `
+    <tr>
+      <td class="rank">${c.rank ? '#' + c.rank : '—'}</td>
+      <td class="company-name">${c.name}</td>
+      <td class="sector-tag">${c.sector}</td>
+      <td><a class="gh-link" href="https://github.com/${c.org}" target="_blank">/${c.org}</a></td>
+      <td class="repos-num">${c.repos.toLocaleString()}</td>
+      <td><div class="activity"><div class="dot dot-${c.activity === 'High' ? 'high' : c.activity === 'Medium' ? 'med' : 'low'}"></div>${c.activity}</div></td>
+      <td><span class="tier-badge tier-${c.tier}">Tier ${c.tier}</span></td>
+    </tr>`).join('');
+}
+
+function doFilter() {
+  filtered = DATA.filter(c => {
+    const ms = curSector === 'all' || c.sector === curSector;
+    const mt = curTier === 'all' || c.tier === parseInt(curTier);
+    const mq = !query || c.name.toLowerCase().includes(query) || c.org.toLowerCase().includes(query) || c.sector.toLowerCase().includes(query);
+    return ms && mt && mq;
+  });
+  doSort(); render();
+}
+
+function doSort() {
+  filtered.sort((a, b) => {
+    if (sortCol === 'name') return sortDir === 'asc' ? a.name.localeCompare(b.name) : b.name.localeCompare(a.name);
+    const va = sortCol === 'rank' ? (a.rank || 9999) : a[sortCol === 'repos' ? 'repos' : 'tier'];
+    const vb = sortCol === 'rank' ? (b.rank || 9999) : b[sortCol === 'repos' ? 'repos' : 'tier'];
+    return sortDir === 'asc' ? va - vb : vb - va;
+  });
+}
+
+function sortBy(col) {
+  if (sortCol === col) sortDir = sortDir === 'asc' ? 'desc' : 'asc';
+  else { sortCol = col; sortDir = col === 'tier' ? 'asc' : 'desc'; }
+  document.querySelectorAll('.sort-icon').forEach(e => { e.textContent = '↕'; e.classList.remove('on'); });
+  const si = document.getElementById('si-' + col);
+  if (si) { si.textContent = sortDir === 'asc' ? '↑' : '↓'; si.classList.add('on'); }
+  doSort(); render();
+}
+
+document.getElementById('search').addEventListener('input', e => { query = e.target.value.toLowerCase(); doFilter(); });
+
+document.getElementById('sectorFilters').addEventListener('click', e => {
+  if (!e.target.matches('.btn')) return;
+  document.querySelectorAll('#sectorFilters .btn').forEach(b => b.className = 'btn');
+  e.target.classList.add('active-all');
+  curSector = e.target.dataset.s; doFilter();
+});
+
+document.getElementById('tierFilters').addEventListener('click', e => {
+  if (!e.target.matches('.btn')) return;
+  document.querySelectorAll('#tierFilters .btn').forEach(b => b.className = 'btn');
+  const t = e.target.dataset.t;
+  e.target.classList.add(t === '1' ? 'active-t1' : t === '2' ? 'active-t2' : t === '3' ? 'active-t3' : 'active-all');
+  curTier = t; doFilter();
+});
+
+const siTier = document.getElementById('si-tier');
+if (siTier) { siTier.textContent = '↑'; siTier.classList.add('on'); }
+
+buildCharts();
+doFilter();
+</script>
+</body>
+</html>

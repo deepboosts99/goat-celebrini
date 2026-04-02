@@ -19,6 +19,7 @@ if (!TOKEN) {
 // ─────────────────────────────────────────────────────────────────────────────
 // Company universe — add rows here to expand beyond F500
 // ─────────────────────────────────────────────────────────────────────────────
+GET /search/users?q=type:org+repos:>50+followers:>200&sort=followers
 const COMPANIES = [
   // Technology
   { rank: 14,  name: 'Microsoft',           sector: 'Technology', org: 'microsoft'          },

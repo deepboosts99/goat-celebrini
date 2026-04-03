@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OSS Intelligence — depthfirst</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #0d0f12; --bg2: #141618; --bg3: #1c1e22; --bg4: #222428;
+    --border: rgba(255,255,255,0.07); --border2: rgba(255,255,255,0.13);
+    --text: #e8eaed; --text2: #9aa0aa; --text3: #5c6370;
+    --green: #1D9E75; --green-bg: rgba(29,158,117,0.12); --green-t: #3ecfa0;
+    --amber: #EF9F27; --amber-bg: rgba(239,159,39,0.12); --amber-t: #f5bb60;
+    --red: #E24B4A;   --red-bg:   rgba(226,75,74,0.12);  --red-t:   #f07070;
+    --blue: #378ADD;  --blue-bg:  rgba(55,138,221,0.12); --blue-t:  #6cb0f0;
+    --gray-bg: rgba(255,255,255,0.05); --gray-t: #9aa0aa;
+    --mono: 'SF Mono','Fira Code','Cascadia Code',monospace;
+    --sans: -apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;
+    --r: 8px; --rl: 12px;
+  }
+  body { font-family: var(--sans); background: var(--bg); color: var(--text); min-height: 100vh; font-size: 14px; line-height: 1.5; }
+  .page { max-width: 1280px; margin: 0 auto; padding: 2rem 1.5rem; }
+
+  /* Header */
+  .hdr { margin-bottom: 1.75rem; padding-bottom: 1.25rem; border-bottom: 1px solid var(--border); }
+  .hdr-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+  .brand { font-family: var(--mono); font-size: 11px; color: var(--text3); letter-spacing: .1em; text-transform: uppercase; display: flex; align-items: center; gap: 8px; }
+  .live-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--green); animation: pulse 2.5s ease-in-out infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
+  .last-run { font-family: var(--mono); font-size: 11px; color: var(--text3); }
+  h1 { font-size: 22px; font-weight: 600; line-height: 1.2; }
+  .sub { font-size: 14px; color: var(--text2); margin-top: 4px; }
+
+  /* Stats */
+  .stats { display: grid; grid-template-columns: repeat(5, minmax(0,1fr)); gap: 10px; margin-bottom: 1.5rem; }
+  .sc { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--rl); padding: .875rem 1rem; }
+  .sl { font-size: 11px; color: var(--text3); margin-bottom: 3px; text-transform: uppercase; letter-spacing: .06em; }
+  .sv { font-size: 22px; font-weight: 600; line-height: 1; }
+  .ss { font-size: 11px; color: var(--text3); margin-top: 3px; }
+
+  /* Insight bar */
+  .insight { background: var(--blue-bg); border: 1px solid rgba(55,138,221,0.2); border-radius: var(--r); padding: .875rem 1rem; margin-bottom: 1.5rem; font-size: 13px; color: var(--text2); line-height: 1.6; }
+  .insight strong { color: var(--text); }
+
+  /* Charts */
+  .charts { display: grid; grid-template-columns: 1fr 1.8fr; gap: 1.25rem; margin-bottom: 1.5rem; }
+  .cc { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--rl); padding: 1.25rem; }
+  .ct { font-size: 11px; text-transform: uppercase; letter-spacing: .07em; color: var(--text3); font-weight: 600; margin-bottom: 1rem; }
+  .leg { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 8px; }
+  .li { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--text2); }
+  .ld { width: 8px; height: 8px; border-radius: 2px; flex-shrink: 0; }
+
+  /* Filters */
+  .filters { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: .75rem; align-items: flex-start; }
+  .sw { position: relative; flex: 1; min-width: 220px; }
+  .sw svg { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); width: 14px; height: 14px; stroke: var(--text3); fill: none; pointer-events: none; }
+  input[type=text] { width: 100%; background: var(--bg2); border: 1px solid var(--border); border-radius: var(--r); color: var(--text); font-size: 13px; padding: 7px 12px 7px 32px; outline: none; font-family: var(--sans); }
+  input[type=text]:focus { border-color: var(--border2); }
+  input[type=text]::placeholder { color: var(--text3); }
+  .fg { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+  .fl { font-size: 11px; color: var(--text3); margin-right: 2px; text-transform: uppercase; letter-spacing: .06em; }
+  .btn { font-size: 12px; padding: 5px 10px; border-radius: 6px; border: 1px solid var(--border); background: transparent; color: var(--text2); cursor: pointer; font-family: var(--sans); white-space: nowrap; transition: all .1s; }
+  .btn:hover { border-color: var(--border2); color: var(--text); background: var(--bg3); }
+  .btn.aa { background: var(--blue-bg); color: var(--blue-t); border-color: rgba(55,138,221,.3); }
+  .btn.at1 { background: var(--green-bg); color: var(--green-t); border-color: rgba(29,158,117,.3); }
+  .btn.at2 { background: var(--amber-bg); color: var(--amber-t); border-color: rgba(239,159,39,.3); }
+  .btn.at3 { background: var(--gray-bg); color: var(--gray-t); border-color: var(--border2); }
+  .btn.al { background: var(--blue-bg); color: var(--blue-t); border-color: rgba(55,138,221,.3); }
+
+  /* Table */
+  .rmeta { font-size: 12px; color: var(--text3); margin-bottom: 7px; font-family: var(--mono); }
+  .tw { overflow-x: auto; border: 1px solid var(--border); border-radius: var(--rl); }
+  table { width: 100%; border-collapse: collapse; min-width: 900px; }
+  thead th { font-size: 11px; text-transform: uppercase; letter-spacing: .07em; color: var(--text3); font-weight: 600; padding: 10px 12px; text-align: left; border-bottom: 1px solid var(--border); background: var(--bg2); cursor: pointer; white-space: nowrap; user-select: none; }
+  thead th:hover { color: var(--text2); }
+  tbody tr { border-bottom: 1px solid var(--border); transition: background .08s; }
+  tbody tr:last-child { border-bottom: none; }
+  tbody tr:hover { background: var(--bg2); }
+  tbody td { padding: 8px 12px; vertical-align: middle; font-size: 13px; color: var(--text); }
+  .rank { font-family: var(--mono); font-size: 11px; color: var(--text3); }
+  .co { font-weight: 500; }
+  .sec { font-size: 12px; color: var(--text2); }
+  .gl { color: var(--blue-t); text-decoration: none; font-family: var(--mono); font-size: 12px; }
+  .gl:hover { text-decoration: underline; }
+  .nn { font-family: var(--mono); font-size: 12px; }
+  .si { margin-left: 3px; opacity: .3; font-size: 10px; }
+  .si.on { opacity: 1; }
+  .empty { text-align: center; padding: 2.5rem; color: var(--text3); font-size: 14px; }
+
+  /* Language pills */
+  .langs { display: flex; gap: 3px; flex-wrap: wrap; }
+  .lp { font-size: 10px; padding: 2px 6px; border-radius: 4px; background: var(--bg4); border: 1px solid var(--border); color: var(--text2); white-space: nowrap; }
+  .lp.hl { background: rgba(29,158,117,0.1); border-color: rgba(29,158,117,0.25); color: var(--green-t); }
+
+  /* Last push badge */
+  .push { font-size: 11px; font-family: var(--mono); white-space: nowrap; }
+  .push.p0 { color: var(--green-t); }
+  .push.p1 { color: var(--amber-t); }
+  .push.p2 { color: var(--red-t); }
+  .push.pn { color: var(--text3); }
+
+  /* Score bar */
+  .score-wrap { display: flex; align-items: center; gap: 8px; min-width: 110px; }
+  .score-bar { flex: 1; height: 4px; background: var(--bg4); border-radius: 2px; overflow: hidden; min-width: 50px; }
+  .score-fill { height: 100%; border-radius: 2px; transition: width .3s; }
+  .score-num { font-family: var(--mono); font-size: 12px; font-weight: 600; min-width: 26px; text-align: right; }
+  .s-hi { color: var(--green-t); }
+  .s-md { color: var(--amber-t); }
+  .s-lo { color: var(--gray-t); }
+
+  /* Tier badge */
+  .tb { display: inline-block; font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 5px; }
+  .t1 { background: var(--green-bg); color: var(--green-t); }
+  .t2 { background: var(--amber-bg); color: var(--amber-t); }
+  .t3 { background: var(--gray-bg);  color: var(--gray-t); }
+
+  /* Loading */
+  .loading { display: flex; align-items: center; justify-content: center; padding: 4rem; gap: 12px; color: var(--text2); font-size: 14px; }
+  .spinner { width: 18px; height: 18px; border: 2px solid var(--border2); border-top-color: var(--green); border-radius: 50%; animation: spin .7s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Footer */
+  .footer { margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; font-size: 11px; color: var(--text3); font-family: var(--mono); flex-wrap: wrap; gap: 8px; }
+
+  @media (max-width: 680px) { .stats { grid-template-columns: repeat(2,1fr); } .charts { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<div class="page">
+
+<div class="hdr">
+  <div class="hdr-top">
+    <div class="brand"><div class="live-dot"></div>depthfirst · OSS intelligence</div>
+    <span class="last-run" id="lastRun"></span>
+  </div>
+  <h1>B2B open source attack surface</h1>
+  <div class="sub">Live GitHub data · enriched nightly · scored for responsible disclosure research prioritization</div>
+</div>
+
+<div class="stats">
+  <div class="sc"><div class="sl">Companies</div><div class="sv" id="sc1">—</div><div class="ss">enriched orgs</div></div>
+  <div class="sc"><div class="sl">Tier 1 targets</div><div class="sv" id="sc2" style="color:var(--green-t)">—</div><div class="ss">score ≥ 70</div></div>
+  <div class="sc"><div class="sl">Avg fit score</div><div class="sv" id="sc3" style="color:var(--amber-t)">—</div><div class="ss">out of 100</div></div>
+  <div class="sc"><div class="sl">Public repos</div><div class="sv" id="sc4">—</div><div class="ss">total tracked</div></div>
+  <div class="sc"><div class="sl">Top language</div><div class="sv" id="sc5" style="font-size:16px;color:var(--green-t)">—</div><div class="ss">by frequency</div></div>
+</div>
+
+<div class="insight">
+  <strong>Research motion:</strong> depthfirst scans public repos → surfaces real CVEs via responsible disclosure → each finding becomes a warm outreach. <strong>Sort by score</strong> to find the highest-value starting points. Companies with high scores have large active codebases in vulnerable languages, no AppSec policy, and existing dependency exposure — the ideal first call.
+</div>
+
+<div class="charts">
+  <div class="cc">
+    <div class="ct">Score distribution</div>
+    <div style="position:relative;height:160px"><canvas id="tierChart"></canvas></div>
+    <div style="margin-top:12px;font-size:12px;color:var(--text2);line-height:1.9">
+      <div><span class="tb t1">Tier 1</span> &nbsp;Score ≥ 70 — start here</div>
+      <div style="margin-top:5px"><span class="tb t2">Tier 2</span> &nbsp;Score 40–69 — follow-on</div>
+      <div style="margin-top:5px"><span class="tb t3">Tier 3</span> &nbsp;Score &lt;40 — monitor</div>
+    </div>
+  </div>
+  <div class="cc">
+    <div class="ct">Repos by sector</div>
+    <div class="leg" id="secLeg"></div>
+    <div style="position:relative;height:220px"><canvas id="secChart"></canvas></div>
+  </div>
+</div>
+
+<div class="filters">
+  <div class="sw">
+    <svg viewBox="0 0 24 24" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+    <input type="text" id="srch" placeholder="Search company, org, language…">
+  </div>
+  <div class="fg">
+    <span class="fl">Sector</span>
+    <button class="btn aa" data-s="all">All</button>
+    <button class="btn" data-s="Technology">Tech</button>
+    <button class="btn" data-s="Financial">Finance</button>
+    <button class="btn" data-s="Telecom">Telecom</button>
+    <button class="btn" data-s="Healthcare">Health</button>
+    <button class="btn" data-s="Retail">Retail</button>
+    <button class="btn" data-s="Defense">Defense</button>
+    <button class="btn" data-s="Media">Media</button>
+    <button class="btn" data-s="Automotive">Auto</button>
+    <button class="btn" data-s="Energy">Energy</button>
+  </div>
+  <div class="fg">
+    <span class="fl">Tier</span>
+    <button class="btn aa" data-t="all">All</button>
+    <button class="btn" data-t="1">Tier 1</button>
+    <button class="btn" data-t="2">Tier 2</button>
+    <button class="btn" data-t="3">Tier 3</button>
+  </div>
+  <div class="fg" id="langFg">
+    <span class="fl">Lang</span>
+    <button class="btn aa" data-l="all">All</button>
+  </div>
+</div>
+
+<div class="rmeta" id="rmeta"></div>
+<div id="loadingWrap" class="loading"><div class="spinner"></div>Loading live data…</div>
+<div class="tw" id="tableWrap" style="display:none">
+  <table>
+    <thead><tr>
+      <th onclick="srt('rank')">Rank<span class="si" id="si-rank">↕</span></th>
+      <th onclick="srt('name')">Company<span class="si" id="si-name">↕</span></th>
+      <th>Sector</th>
+      <th>GitHub org</th>
+      <th onclick="srt('repos')">Repos<span class="si" id="si-repos">↕</span></th>
+      <th onclick="srt('last_push_days')">Last push<span class="si" id="si-last_push_days">↕</span></th>
+      <th>Languages</th>
+      <th onclick="srt('contributors')">Contrib.<span class="si" id="si-contributors">↕</span></th>
+      <th onclick="srt('score')">Score<span class="si" id="si-score">↓</span></th>
+      <th onclick="srt('tier')">Tier<span class="si" id="si-tier">↕</span></th>
+    </tr></thead>
+    <tbody id="tb"></tbody>
+  </table>
+  <div id="emptyState" class="empty" style="display:none">No companies match — adjust filters.</div>
+</div>
+
+<div class="footer">
+  <span>depthfirst · fortune 500 oss intelligence · live github data</span>
+  <span id="footerMeta"></span>
+</div>
+
+</div>
+
+<script>
+// ─── Static fallback (used when data.json not available) ─────────────────────
+const STATIC = [
+  {rank:14,name:'Microsoft',sector:'Technology',org:'microsoft',repos:4100,activity:'High',tier:1,score:null,enriched:false,languages:[],primary_language:null,last_push_days:null,contributors:0,top_repo_stars:0,has_actions:false,has_security_md:false,has_dependabot:false,has_dep_files:false,open_security_issues:0,org_age_years:0},
+  {rank:2,name:'Amazon / AWS',sector:'Technology',org:'aws',repos:2500,activity:'High',tier:1,score:null,enriched:false,languages:[],primary_language:null,last_push_days:null,contributors:0,top_repo_stars:0,has_actions:false,has_security_md:false,has_dependabot:false,has_dep_files:false,open_security_issues:0,org_age_years:0},
+  {rank:8,name:'Alphabet (Google)',sector:'Technology',org:'google',repos:3200,activity:'High',tier:1,score:null,enriched:false,languages:[],primary_language:null,last_push_days:null,contributors:0,top_repo_stars:0,has_actions:false,has_security_md:false,has_dependabot:false,has_dep_files:false,open_security_issues:0,org_age_years:0},
+  {rank:27,name:'Meta Platforms',sector:'Technology',org:'facebook',repos:800,activity:'High',tier:1,score:null,enriched:false,languages:[],primary_language:null,last_push_days:null,contributors:0,top_repo_stars:0,has_actions:false,has_security_md:false,has_dependabot:false,has_dep_files:false,open_security_issues:0,org_age_years:0},
+  {rank:49,name:'IBM',sector:'Technology',org:'IBM',repos:2200,activity:'High',tier:1,score:null,enriched:false,languages:[],primary_language:null,last_push_days:null,contributors:0,top_repo_stars:0,has_actions:false,has_security_md:false,has_dependabot:false,has_dep_files:false,open_security_issues:0,org_age_years:0},
+  {rank:46,name:'Intel',sector:'Technology',org:'intel',repos:850,activity:'High',tier:1,score:null,enriched:false,languages:[],primary_language:null,last_push_days:null,contributors:0,top_repo_stars:0,has_actions:false,has_security_md:false,has_dependabot:false,has_dep_files:false,open_security_issues:0,org_age_years:0},
+  {rank:77,name:'Cisco Systems',sector:'Technology',org:'cisco',repos:600,activity:'High',tier:1,score:null,enriched:false,languages:[],primary_language:null,last_push_days:null,contributors:0,top_repo_stars:0,has_actions:false,has_security_md:false,has_dependabot:false,has_dep_files:false,open_security_issues:0,org_age_years:0},
+  {rank:136,name:'Salesforce',sector:'Technology',org:'salesforce',repos:700,activity:'High',tier:1,score:null,enriched:false,languages:[],primary_language:null,last_push_days:null,contributors:0,top_repo_stars:0,has_actions:false,has_security_md:false,has_dependabot:false,has_dep_files:false,open_security_issues:0,org_age_years:0},
+  {rank:85,name:'Oracle',sector:'Technology',org:'oracle',repos:500,activity:'High',tier:1,score:null,enriched:false,languages:[],primary_language:null,last_push_days:null,contributors:0,top_repo_stars:0,has_actions:false,has_security_md:false,has_dependabot:false,has_dep_files:false,open_security_issues:0,org_age_years:0},
+  {rank:134,name:'Nvidia',sector:'Technology',org:'NVIDIA',repos:450,activity:'High',tier:1,score:null,enriched:false,languages:[],primary_language:null,last_push_days:null,contributors:0,top_repo_stars:0,has_actions:false,has_security_md:false,has_dependabot:false,has_dep_files:false,open_security_issues:0,org_age_years:0},
+  {rank:13,name:'AT&T',sector:'Telecom',org:'att',repos:102,activity:'High',tier:1,score:null,enriched:false,languages:[],primary_language:null,last_push_days:null,contributors:0,top_repo_stars:0,has_actions:false,has_security_md:false,has_dependabot:false,has_dep_files:false,open_security_issues:0,org_age_years:0},
+  {rank:null,name:'T-Mobile',sector:'Telecom',org:'tmobile',repos:92,activity:'High',tier:1,score:null,enriched:false,languages:[],primary_language:null,last_push_days:null,contributors:0,top_repo_stars:0,has_actions:false,has_security_md:false,has_dependabot:false,has_dep_files:false,open_security_issues:0,org_age_years:0},
+  {rank:23,name:'Verizon',sector:'Telecom',org:'Verizon',repos:120,activity:'High',tier:1,score:null,enriched:false,languages:[],primary_language:null,last_push_days:null,contributors:0,top_repo_stars:0,has_actions:false,has_security_md:false,has_dependabot:false,has_dep_files:false,open_security_issues:0,org_age_years:0},
+  {rank:28,name:'Comcast',sector:'Telecom',org:'Comcast',repos:350,activity:'High',tier:1,score:null,enriched:false,languages:[],primary_language:null,last_push_days:null,contributors:0,top_repo_stars:0,has_actions:false,has_security_md:false,has_dependabot:false,has_dep_files:false,open_security_issues:0,org_age_years:0},
+  {rank:24,name:'JPMorgan Chase',sector:'Financial',org:'jpmorganchase',repos:180,activity:'High',tier:1,score:null,enriched:false,languages:[],primary_language:null,last_push_days:null,contributors:0,top_repo_stars:0,has_actions:false,has_security_md:false,has_dependabot:false,has_dep_files:false,open_security_issues:0,org_age_years:0},
+  {rank:57,name:'Goldman Sachs',sector:'Financial',org:'goldmansachs',repos:120,activity:'High',tier:1,score:null,enriched:false,languages:[],primary_language:null,last_push_days:null,contributors:0,top_repo_stars:0,has_actions:false,has_security_md:false,has_dependabot:false,has_dep_files:false,open_security_issues:0,org_age_years:0},
+  {rank:null,name:'Capital One',sector:'Financial',org:'capitalone',repos:250,activity:'High',tier:1,score:null,enriched:false,languages:[],primary_language:null,last_push_days:null,contributors:0,top_repo_stars:0,has_actions:false,has_security_md:false,has_dependabot:false,has_dep_files:false,open_security_issues:0,org_age_years:0},
+  {rank:null,name:'American Express',sector:'Financial',org:'americanexpress',repos:160,activity:'High',tier:1,score:null,enriched:false,languages:[],primary_language:null,last_push_days:null,contributors:0,top_repo_stars:0,has_actions:false,has_security_md:false,has_dependabot:false,has_dep_files:false,open_security_issues:0,org_age_years:0},
+  {rank:143,name:'PayPal Holdings',sector:'Financial',org:'paypal',repos:310,activity:'High',tier:1,score:null,enriched:false,languages:[],primary_language:null,last_push_days:null,contributors:0,top_repo_stars:0,has_actions:false,has_security_md:false,has_dependabot:false,has_dep_files:false,open_security_issues:0,org_age_years:0},
+  {rank:1,name:'Walmart',sector:'Retail',org:'walmartlabs',repos:600,activity:'High',tier:1,score:null,enriched:false,languages:[],primary_language:null,last_push_days:null,contributors:0,top_repo_stars:0,has_actions:false,has_security_md:false,has_dependabot:false,has_dep_files:false,open_security_issues:0,org_age_years:0},
+  {rank:32,name:'Target',sector:'Retail',org:'target',repos:200,activity:'High',tier:1,score:null,enriched:false,languages:[],primary_language:null,last_push_days:null,contributors:0,top_repo_stars:0,has_actions:false,has_security_md:false,has_dependabot:false,has_dep_files:false,open_security_issues:0,org_age_years:0},
+  {rank:73,name:'Netflix',sector:'Media',org:'Netflix',repos:500,activity:'High',tier:1,score:null,enriched:false,languages:[],primary_language:null,last_push_days:null,contributors:0,top_repo_stars:0,has_actions:false,has_security_md:false,has_dependabot:false,has_dep_files:false,open_security_issues:0,org_age_years:0},
+];
+
+const HIGH_RISK_LANGS = new Set(['JavaScript','TypeScript','Python','Java','Go','Ruby','PHP','Kotlin','Scala']);
+const SECTORS = ['Technology','Telecom','Financial','Retail','Media','Healthcare','Defense','Automotive','Energy'];
+const S_COLORS = ['#1D9E75','#534AB7','#378ADD','#BA7517','#D4537E','#D85A30','#5F5E5A','#888780','#EF9F27'];
+
+let DATA = [], flt = [], sortCol = 'score', sortDir = 'desc';
+let curS = 'all', curT = 'all', curL = 'all', query = '';
+
+// ─── Load data ─────────────────────────────────────────────────────────────
+async function loadData() {
+  try {
+    const res = await fetch('data.json');
+    if (!res.ok) throw new Error('not found');
+    DATA = await res.json();
+    document.getElementById('lastRun').textContent = (() => {
+      const d = DATA.find(r => r.enriched_at)?.enriched_at;
+      return d ? 'last run ' + new Date(d).toLocaleDateString('en-US',{month:'short',day:'numeric'}) : '';
+    })();
+  } catch {
+    DATA = STATIC;
+    document.getElementById('lastRun').textContent = 'static data — run pipeline to enrich';
+  }
+
+  document.getElementById('loadingWrap').style.display = 'none';
+  document.getElementById('tableWrap').style.display = 'block';
+  buildLangFilter();
+  buildCharts();
+  updateStats();
+  doFilter();
+}
+
+// ─── Stats ─────────────────────────────────────────────────────────────────
+function updateStats() {
+  const enriched = DATA.filter(d => d.enriched);
+  document.getElementById('sc1').textContent = DATA.length;
+  document.getElementById('sc2').textContent = DATA.filter(d => d.tier === 1).length;
+  const avg = enriched.length ? Math.round(enriched.reduce((s,d) => s+(d.score||0),0)/enriched.length) : '—';
+  document.getElementById('sc3').textContent = avg;
+  document.getElementById('sc4').textContent = DATA.reduce((s,d) => s+(d.repos||0),0).toLocaleString();
+  const lc = {};
+  DATA.forEach(d => (d.languages||[]).forEach(l => { if(HIGH_RISK_LANGS.has(l)) lc[l]=(lc[l]||0)+1; }));
+  const top = Object.entries(lc).sort((a,b)=>b[1]-a[1])[0];
+  document.getElementById('sc5').textContent = top ? top[0] : '—';
+}
+
+// ─── Language filter ────────────────────────────────────────────────────────
+function buildLangFilter() {
+  const lc = {};
+  DATA.forEach(d => (d.languages||[]).slice(0,3).forEach(l => { if(HIGH_RISK_LANGS.has(l)) lc[l]=(lc[l]||0)+1; }));
+  const top = Object.entries(lc).sort((a,b)=>b[1]-a[1]).slice(0,6).map(([l])=>l);
+  const fg = document.getElementById('langFg');
+  top.forEach(lang => {
+    const b = document.createElement('button');
+    b.className = 'btn'; b.dataset.l = lang; b.textContent = lang;
+    fg.appendChild(b);
+  });
+}
+
+// ─── Charts ────────────────────────────────────────────────────────────────
+function buildCharts() {
+  const tc = [DATA.filter(d=>d.tier===1).length, DATA.filter(d=>d.tier===2).length, DATA.filter(d=>d.tier===3).length];
+  new Chart(document.getElementById('tierChart'), {
+    type:'bar',
+    data:{labels:['Tier 1','Tier 2','Tier 3'],datasets:[{data:tc,backgroundColor:['#1D9E75','#EF9F27','#444649'],borderRadius:5,borderSkipped:false,barThickness:44}]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>` ${c.raw} companies`}}},scales:{x:{grid:{display:false},ticks:{color:'#9aa0aa',font:{size:12}},border:{display:false}},y:{grid:{color:'rgba(255,255,255,0.05)'},ticks:{color:'#5c6370',font:{size:11},stepSize:5},border:{display:false}}}}
+  });
+  const sRepos = SECTORS.map(s => DATA.filter(d=>d.sector===s).reduce((a,d)=>a+(d.repos||0),0));
+  document.getElementById('secLeg').innerHTML = SECTORS.map((s,i)=>`<div class="li"><div class="ld" style="background:${S_COLORS[i]}"></div>${s}</div>`).join('');
+  new Chart(document.getElementById('secChart'), {
+    type:'bar',
+    data:{labels:SECTORS,datasets:[{data:sRepos,backgroundColor:S_COLORS,borderRadius:3,borderSkipped:false}]},
+    options:{responsive:true,maintainAspectRatio:false,indexAxis:'y',plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>` ${c.raw.toLocaleString()} repos`}}},scales:{x:{grid:{color:'rgba(255,255,255,0.05)'},ticks:{color:'#5c6370',font:{size:11}},border:{display:false}},y:{grid:{display:false},ticks:{color:'#9aa0aa',font:{size:12}},border:{display:false}}}}
+  });
+}
+
+// ─── Filter + sort ─────────────────────────────────────────────────────────
+function doFilter() {
+  flt = DATA.filter(d => {
+    const ms = curS === 'all' || d.sector === curS;
+    const mt = curT === 'all' || d.tier === parseInt(curT);
+    const ml = curL === 'all' || (d.languages||[]).includes(curL);
+    const mq = !query || d.name.toLowerCase().includes(query) || (d.org||'').toLowerCase().includes(query) || d.sector.toLowerCase().includes(query) || (d.primary_language||'').toLowerCase().includes(query);
+    return ms && mt && ml && mq;
+  });
+  doSort(); render();
+}
+
+function doSort() {
+  flt.sort((a,b) => {
+    if (sortCol === 'name') return sortDir==='asc' ? a.name.localeCompare(b.name) : b.name.localeCompare(a.name);
+    let va = a[sortCol], vb = b[sortCol];
+    if (sortCol === 'rank')          { va = a.rank||9999; vb = b.rank||9999; }
+    if (sortCol === 'last_push_days'){ va = a.last_push_days??9999; vb = b.last_push_days??9999; }
+    if (va==null) va = sortDir==='asc'?Infinity:-Infinity;
+    if (vb==null) vb = sortDir==='asc'?Infinity:-Infinity;
+    return sortDir==='asc' ? va-vb : vb-va;
+  });
+}
+
+function srt(col) {
+  if (sortCol===col) sortDir = sortDir==='asc'?'desc':'asc';
+  else { sortCol=col; sortDir=(col==='rank'||col==='last_push_days')?'asc':'desc'; }
+  document.querySelectorAll('.si').forEach(e=>{e.textContent='↕';e.classList.remove('on');});
+  const si = document.getElementById('si-'+col);
+  if(si){si.textContent=sortDir==='asc'?'↑':'↓';si.classList.add('on');}
+  doSort(); render();
+}
+
+// ─── Render ─────────────────────────────────────────────────────────────────
+function pushBadge(days) {
+  if (days === null) return `<span class="push pn">—</span>`;
+  if (days < 1)    return `<span class="push p0">&lt; 1d</span>`;
+  if (days < 7)    return `<span class="push p0">${days}d</span>`;
+  if (days < 30)   return `<span class="push p0">${days}d</span>`;
+  if (days < 90)   return `<span class="push p1">${days}d</span>`;
+  if (days < 365)  return `<span class="push p2">${days}d</span>`;
+  return `<span class="push p2">${Math.floor(days/365)}y+</span>`;
+}
+
+function langPills(langs, primary) {
+  if (!langs?.length) return '<span style="color:var(--text3);font-size:11px">—</span>';
+  return langs.slice(0,3).map(l => {
+    const hl = HIGH_RISK_LANGS.has(l) && l === primary ? ' hl' : '';
+    return `<span class="lp${hl}">${l}</span>`;
+  }).join('');
+}
+
+function scoreBar(score) {
+  if (score === null) return `<span class="score-num" style="color:var(--text3)">—</span>`;
+  const cls = score >= 70 ? 's-hi' : score >= 40 ? 's-md' : 's-lo';
+  const col = score >= 70 ? '#1D9E75' : score >= 40 ? '#EF9F27' : '#444649';
+  return `<div class="score-wrap"><div class="score-bar"><div class="score-fill" style="width:${score}%;background:${col}"></div></div><span class="score-num ${cls}">${score}</span></div>`;
+}
+
+function render() {
+  const tb = document.getElementById('tb');
+  const em = document.getElementById('emptyState');
+  document.getElementById('rmeta').textContent = `${flt.length} of ${DATA.length} companies`;
+  document.getElementById('footerMeta').textContent = `${flt.length} shown`;
+  if (!flt.length) { tb.innerHTML=''; em.style.display='block'; return; }
+  em.style.display = 'none';
+  tb.innerHTML = flt.map(d => `<tr>
+    <td class="rank">${d.rank ? '#'+d.rank : '—'}</td>
+    <td class="co">${d.name}</td>
+    <td class="sec">${d.sector}</td>
+    <td><a class="gl" href="https://github.com/${d.org}" target="_blank">/${d.org}</a></td>
+    <td class="nn" style="text-align:right">${(d.repos||0).toLocaleString()}</td>
+    <td>${pushBadge(d.last_push_days)}</td>
+    <td><div class="langs">${langPills(d.languages, d.primary_language)}</div></td>
+    <td class="nn" style="text-align:right;color:var(--text2)">${d.contributors > 0 ? d.contributors + (d.contributors >= 100 ? '+' : '') : '—'}</td>
+    <td>${scoreBar(d.score)}</td>
+    <td><span class="tb t${d.tier}">Tier ${d.tier}</span></td>
+  </tr>`).join('');
+}
+
+// ─── Event wiring ────────────────────────────────────────────────────────────
+document.getElementById('srch').addEventListener('input', e => { query = e.target.value.toLowerCase(); doFilter(); });
+
+document.querySelector('.filters').addEventListener('click', e => {
+  const btn = e.target.closest('.btn');
+  if (!btn) return;
+  if ('s' in btn.dataset) {
+    document.querySelectorAll('[data-s]').forEach(b => b.className='btn');
+    btn.classList.add('aa'); curS = btn.dataset.s; doFilter();
+  }
+  if ('t' in btn.dataset) {
+    document.querySelectorAll('[data-t]').forEach(b => b.className='btn');
+    const t=btn.dataset.t; btn.classList.add(t==='1'?'at1':t==='2'?'at2':t==='3'?'at3':'aa'); curT=t; doFilter();
+  }
+  if ('l' in btn.dataset) {
+    document.querySelectorAll('[data-l]').forEach(b => b.className='btn');
+    btn.classList.add('al'); curL = btn.dataset.l; doFilter();
+  }
+});
+
+// Set initial sort indicator
+const siScore = document.getElementById('si-score');
+if(siScore){siScore.textContent='↓';siScore.classList.add('on');}
+
+loadData();
+</script>
+</body>
+</html>
